@@ -1,392 +1,223 @@
-<h1 align="center">lru.min</h1>
-<div align="center">
+# raw-body
 
-[![NPM Version](https://img.shields.io/npm/v/lru.min.svg?label=&color=70a1ff&logo=npm&logoColor=white)](https://www.npmjs.com/package/lru.min)
-[![NPM Downloads](https://img.shields.io/npm/dm/lru.min.svg?label=&logo=npm&logoColor=white&color=45aaf2)](https://www.npmjs.com/package/lru.min)
-[![Coverage](https://img.shields.io/codecov/c/github/wellwelwel/lru.min?label=&logo=codecov&logoColor=white&color=98cc00)](https://app.codecov.io/gh/wellwelwel/lru.min)<br />
-[![GitHub Workflow Status (Node.js)](https://img.shields.io/github/actions/workflow/status/wellwelwel/lru.min/ci_node.yml?event=push&label=&branch=main&logo=nodedotjs&logoColor=535c68&color=badc58)](https://github.com/wellwelwel/lru.min/actions/workflows/ci_node.yml?query=branch%3Amain)
-[![GitHub Workflow Status (Bun)](https://img.shields.io/github/actions/workflow/status/wellwelwel/lru.min/ci_bun.yml?event=push&label=&branch=main&logo=bun&logoColor=ffffff&color=f368e0)](https://github.com/wellwelwel/lru.min/actions/workflows/ci_bun.yml?query=branch%3Amain)
-[![GitHub Workflow Status (Deno)](https://img.shields.io/github/actions/workflow/status/wellwelwel/lru.min/ci_deno.yml?event=push&label=&branch=main&logo=deno&logoColor=ffffff&color=079992)](https://github.com/wellwelwel/lru.min/actions/workflows/ci_deno.yml?query=branch%3Amain)
+[![NPM Version][npm-image]][npm-url]
+[![NPM Downloads][downloads-image]][downloads-url]
+[![Node.js Version][node-version-image]][node-version-url]
+[![Build status][github-actions-ci-image]][github-actions-ci-url]
+[![Test coverage][coveralls-image]][coveralls-url]
 
-🔥 An extremely fast, efficient, and lightweight <strong><a href="https://en.m.wikipedia.org/wiki/Cache_replacement_policies#Least_Recently_Used_.28LRU.29">LRU</a> Cache</strong> for <strong>JavaScript</strong> (<strong>Browser</strong> compatible).
-
-</div>
-
-## Why another LRU?
-
-- 🎖️ **lru.min** is fully compatible with both **Node.js** _(8+)_, **Bun**, **Deno** and, browser environments. All of this, while maintaining the same high performance [_(and a little more)_](https://github.com/wellwelwel/lru.min?tab=readme-ov-file#performance) as the most popular **LRU** packages.
-
----
+Gets the entire buffer of a stream either as a `Buffer` or a string.
+Validates the stream's length against an expected length and maximum limit.
+Ideal for parsing request bodies.
 
 ## Install
 
-```bash
-# Node.js
-npm i lru.min
+This is a [Node.js](https://nodejs.org/en/) module available through the
+[npm registry](https://www.npmjs.com/). Installation is done using the
+[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
+
+```sh
+$ npm install raw-body
 ```
-
-```bash
-# Bun
-bun add lru.min
-```
-
-```bash
-# Deno
-deno add npm:lru.min
-```
-
----
-
-## Usage
-
-### Quickstart
-
-```js
-import { createLRU } from 'lru.min';
-
-const max = 2;
-const onEviction = (key, value) => {
-  console.log(`Key "${key}" with value "${value}" has been evicted.`);
-};
-
-const LRU = createLRU({
-  max,
-  onEviction,
-});
-
-LRU.set('A', 'My Value');
-LRU.set('B', 'Other Value');
-LRU.set('C', 'Another Value');
-
-// => Key "A" with value "My Value" has been evicted.
-
-LRU.has('B');
-LRU.get('B');
-LRU.delete('B');
-
-// => Key "B" with value "Other Value" has been evicted.
-
-LRU.peek('C');
-
-LRU.clear(); // ← recommended | LRU.evict(max) → (slower alternative)
-
-// => Key "C" with value "Another Value" has been evicted.
-
-LRU.set('D', "You're amazing 💛");
-
-LRU.size; // 1
-LRU.max; // 2
-LRU.available; // 1
-
-LRU.resize(10);
-
-LRU.size; // 1
-LRU.max; // 10
-LRU.available; // 9
-```
-
-> For _up-to-date_ documentation, always follow the [**README.md**](https://github.com/wellwelwel/lru.min?tab=readme-ov-file#readme) in the **GitHub** repository.
-
-### Import
-
-#### ES Modules
-
-```js
-import { createLRU } from 'lru.min';
-```
-
-#### CommonJS
-
-```js
-const { createLRU } = require('lru.min');
-```
-
-#### Browser
-
-> Requires **ES6**.
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/lru.min@1.x.x/browser/lru.min.js"></script>
-```
-
-- You can use tools such as [**Babel**](https://github.com/babel/babel) to increase the compatibility rate.
-
-### Create a new LRU Cache
-
-> Set maximum size when creating **LRU**.
-
-```ts
-const LRU = createLRU({ max: 150_000 });
-```
-
-Also, you can set a callback for every deletion/eviction:
-
-```ts
-const LRU = createLRU({
-  max: 150_000,
-  onEviction: (key, value) => {
-    // do something
-  },
-});
-```
-
-### Set a cache
-
-Adds a key-value pair to the cache. Updates the value if the key already exists
-
-```ts
-LRU.set('key', 'value');
-```
-
-> `undefined` keys will simply be ignored.
-
-- Complexity: **O(1)**.
-
-### Get a cache
-
-Retrieves the value for a given key and moves the key to the most recent position.
-
-```ts
-LRU.get('key');
-```
-
-- Complexity: **O(1)**.
-
-### Peek a cache
-
-Retrieves the value for a given key without changing its position.
-
-```ts
-LRU.peek('key');
-```
-
-- Complexity: **O(1)**.
-
-### Check if a key exists
-
-```ts
-LRU.has('key');
-```
-
-- Complexity: **O(1)**.
-
-### Delete a cache
-
-```ts
-LRU.delete('key');
-```
-
-- Complexity: **O(1)**.
-
-### Evict from the oldest cache
-
-Evicts the specified number of the oldest items from the cache.
-
-```ts
-LRU.evict(1000);
-```
-
-- Complexity: **O(key)** — even if passed a number greater than the number of items, only existing items will be evicted.
-
-> [!TIP]
->
-> - Methods that perform eviction(s) when maximum size is reached: `set` and `resize`.
-> - Methods that always perform eviction(s): `delete`, `clear`, and `evict` itself.
-
-### Resize the cache
-
-Resizes the cache to a new maximum size, evicting items if necessary.
-
-```ts
-LRU.resize(50_000);
-```
-
-- Complexity:
-  - Increasing: **O(newMax - max)**.
-  - Downsizing: **O(n)**.
-
-### Clear the cache
-
-Clears and disposes (if used) all key-value pairs from the cache.
-
-```ts
-LRU.clear();
-```
-
-- Complexity:
-  - Without `onEviction`: **O(1)**.
-  - Using `onEviction`: **O(entries)**.
-
-### Debugging
-
-#### Get the max size of the cache
-
-```ts
-LRU.max;
-```
-
-- Complexity: **O(1)**.
-
-#### Get the current size of the cache
-
-```ts
-LRU.size;
-```
-
-- Complexity: **O(1)**.
-
-#### Get the available slots in the cache
-
-```ts
-LRU.available;
-```
-
-- Complexity: **O(1)**.
-
-### Iterating the cache
-
-#### Get all keys
-
-Iterates over all keys in the cache, from most recent to least recent.
-
-```ts
-const keys = [...LRU.keys()];
-```
-
-- Complexity: **O(keys)**.
-
-#### Get all values
-
-Iterates over all values in the cache, from most recent to least recent.
-
-```ts
-const values = [...LRU.values()];
-```
-
-- Complexity: **O(values)**.
-
-#### Get all entries
-
-Iterates over `[key, value]` pairs in the cache, from most recent to least recent.
-
-```ts
-const entries = [...LRU.entries()];
-```
-
-- Complexity: **O(entries)**.
-
-#### Run a callback for each entry
-
-Iterates over each value-key pair in the cache, from most recent to least recent.
-
-```ts
-LRU.forEach((value, key) => {
-  // do something
-});
-```
-
-- Complexity: **O(entries)**.
-
----
-
-> [!NOTE]
->
-> - We use `O(keys)`, `O(values)`, `O(entries)`, and `O(newMax - max)` to explicitly indicate what is being iterated over. In traditional complexity notation, this would be represented as `O(n)`.
-
----
 
 ### TypeScript
 
-You can set types for both keys and values. For example:
-
-```ts
-import { createLRU } from 'lru.min';
-
-type Key = number;
-
-type Value = {
-  name: string;
-};
-
-const LRU = createLRU<Key, Value>({ max: 1000 });
-
-LRU.set(1, { name: 'Peter' });
-LRU.set(2, { name: 'Mary' });
-```
-
-Also:
-
-```ts
-import { createLRU, type CacheOptions } from 'lru.min';
-
-type Key = number;
-
-type Value = {
-  name: string;
-};
-
-const options: CacheOptions<Key, Value> = {
-  max: 10,
-  onEviction(key, value) {
-    console.log(key, value);
-  },
-};
-
-// No need to repeat the type params
-const LRU = createLRU(options);
-
-LRU.set(1, { name: 'Peter' });
-LRU.set(2, { name: 'Mary' });
-```
-
----
-
-### Performance
-
-The benchmark is performed by comparing `1,000,000` runs through a maximum cache limit of `100,000`, getting `333,333` caches and deleting `200,000` keys 10 consecutive times, clearing the cache every run.
-
-> - [**lru-cache**](https://github.com/isaacs/node-lru-cache) `v11.0.0`
+This module includes a [TypeScript](https://www.typescriptlang.org/)
+declaration file to enable auto complete in compatible editors and type
+information for TypeScript projects. This module depends on the Node.js
+types, so install `@types/node`:
 
 ```sh
-# Time:
-  lru.min:    240.45ms
-  lru-cache:  258.32ms
-
-# CPU:
-  lru.min:    275558.30µs
-  lru-cache:  306858.30µs
+$ npm install @types/node
 ```
 
-- See detailed results and how the tests are run and compared in the [**benchmark**](https://github.com/wellwelwel/lru.min/tree/main/benchmark) directory.
+## API
 
----
+```js
+var getRawBody = require('raw-body')
+```
 
-## Security Policy
+### getRawBody(stream, [options], [callback])
 
-[![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/wellwelwel/lru.min/ci_codeql.yml?event=push&label=&branch=main&logo=github&logoColor=white&color=f368e0)](https://github.com/wellwelwel/lru.min/actions/workflows/ci_codeql.yml?query=branch%3Amain)
+**Returns a promise if no callback specified and global `Promise` exists.**
 
-Please check the [**SECURITY.md**](https://github.com/wellwelwel/lru.min/blob/main/SECURITY.md).
+Options:
 
----
+- `length` - The length of the stream.
+  If the contents of the stream do not add up to this length,
+  an `400` error code is returned.
+- `limit` - The byte limit of the body.
+  This is the number of bytes or any string format supported by
+  [bytes](https://www.npmjs.com/package/bytes),
+  for example `1000`, `'500kb'` or `'3mb'`.
+  If the body ends up being larger than this limit,
+  a `413` error code is returned.
+- `encoding` - The encoding to use to decode the body into a string.
+  By default, a `Buffer` instance will be returned when no encoding is specified.
+  Most likely, you want `utf-8`, so setting `encoding` to `true` will decode as `utf-8`.
+  You can use any type of encoding supported by [iconv-lite](https://www.npmjs.org/package/iconv-lite#readme).
 
-## Contributing
+You can also pass a string in place of options to just specify the encoding.
 
-See the [**Contributing Guide**](https://github.com/wellwelwel/lru.min/blob/main/CONTRIBUTING.md) and please follow our [**Code of Conduct**](https://github.com/wellwelwel/lru.min/blob/main/CODE_OF_CONDUCT.md) 🚀
+If an error occurs, the stream will be paused, everything unpiped,
+and you are responsible for correctly disposing the stream.
+For HTTP requests, you may need to finish consuming the stream if
+you want to keep the socket open for future requests. For streams
+that use file descriptors, you should `stream.destroy()` or
+`stream.close()` to prevent leaks.
 
----
+## Errors
 
-## Acknowledgements
+This module creates errors depending on the error condition during reading.
+The error may be an error from the underlying Node.js implementation, but is
+otherwise an error created by this module, which has the following attributes:
 
-- [![Contributors](https://img.shields.io/github/contributors/wellwelwel/lru.min?label=Contributors)](https://github.com/wellwelwel/lru.min/graphs/contributors)
-- **lru.min** is inspired by [**lru-cache**](https://github.com/isaacs/node-lru-cache) architecture and [**quick-lru**](https://github.com/sindresorhus/quick-lru) usage, simplifying and improving their concepts for enhanced performance and compatibility.
+  * `limit` - the limit in bytes
+  * `length` and `expected` - the expected length of the stream
+  * `received` - the received bytes
+  * `encoding` - the invalid encoding
+  * `status` and `statusCode` - the corresponding status code for the error
+  * `type` - the error type
 
-> [!IMPORTANT]
->
-> No [**lru-cache**](https://github.com/isaacs/node-lru-cache) or [**quick-lru**](https://github.com/sindresorhus/quick-lru) code is used in **lru.min**. For more comprehensive features such as **TTL** support, consider using and supporting them 🤝
+### Types
 
----
+The errors from this module have a `type` property which allows for the programmatic
+determination of the type of error returned.
+
+#### encoding.unsupported
+
+This error will occur when the `encoding` option is specified, but the value does
+not map to an encoding supported by the [iconv-lite](https://www.npmjs.org/package/iconv-lite#readme)
+module.
+
+#### entity.too.large
+
+This error will occur when the `limit` option is specified, but the stream has
+an entity that is larger.
+
+#### request.aborted
+
+This error will occur when the request stream is aborted by the client before
+reading the body has finished.
+
+#### request.size.invalid
+
+This error will occur when the `length` option is specified, but the stream has
+emitted more bytes.
+
+#### stream.encoding.set
+
+This error will occur when the given stream has an encoding set on it, making it
+a decoded stream. The stream should not have an encoding set and is expected to
+emit `Buffer` objects.
+
+#### stream.not.readable
+
+This error will occur when the given stream is not readable.
+
+## Examples
+
+### Simple Express example
+
+```js
+var contentType = require('content-type')
+var express = require('express')
+var getRawBody = require('raw-body')
+
+var app = express()
+
+app.use(function (req, res, next) {
+  getRawBody(req, {
+    length: req.headers['content-length'],
+    limit: '1mb',
+    encoding: contentType.parse(req).parameters.charset
+  }, function (err, string) {
+    if (err) return next(err)
+    req.text = string
+    next()
+  })
+})
+
+// now access req.text
+```
+
+### Simple Koa example
+
+```js
+var contentType = require('content-type')
+var getRawBody = require('raw-body')
+var koa = require('koa')
+
+var app = koa()
+
+app.use(function * (next) {
+  this.text = yield getRawBody(this.req, {
+    length: this.req.headers['content-length'],
+    limit: '1mb',
+    encoding: contentType.parse(this.req).parameters.charset
+  })
+  yield next
+})
+
+// now access this.text
+```
+
+### Using as a promise
+
+To use this library as a promise, simply omit the `callback` and a promise is
+returned, provided that a global `Promise` is defined.
+
+```js
+var getRawBody = require('raw-body')
+var http = require('http')
+
+var server = http.createServer(function (req, res) {
+  getRawBody(req)
+    .then(function (buf) {
+      res.statusCode = 200
+      res.end(buf.length + ' bytes submitted')
+    })
+    .catch(function (err) {
+      res.statusCode = 500
+      res.end(err.message)
+    })
+})
+
+server.listen(3000)
+```
+
+### Using with TypeScript
+
+```ts
+import * as getRawBody from 'raw-body';
+import * as http from 'http';
+
+const server = http.createServer((req, res) => {
+  getRawBody(req)
+  .then((buf) => {
+    res.statusCode = 200;
+    res.end(buf.length + ' bytes submitted');
+  })
+  .catch((err) => {
+    res.statusCode = err.statusCode;
+    res.end(err.message);
+  });
+});
+
+server.listen(3000);
+```
 
 ## License
 
-**lru.min** is under the [**MIT License**](https://github.com/wellwelwel/lru.min/blob/main/LICENSE).<br />
-Copyright © 2024-present [Weslley Araújo](https://github.com/wellwelwel) and **lru.min** [contributors](https://github.com/wellwelwel/lru.min/graphs/contributors).
+[MIT](LICENSE)
+
+[npm-image]: https://img.shields.io/npm/v/raw-body.svg
+[npm-url]: https://npmjs.org/package/raw-body
+[node-version-image]: https://img.shields.io/node/v/raw-body.svg
+[node-version-url]: https://nodejs.org/en/download/
+[coveralls-image]: https://img.shields.io/coveralls/stream-utils/raw-body/master.svg
+[coveralls-url]: https://coveralls.io/r/stream-utils/raw-body?branch=master
+[downloads-image]: https://img.shields.io/npm/dm/raw-body.svg
+[downloads-url]: https://npmjs.org/package/raw-body
+[github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/stream-utils/raw-body/ci.yml?branch=master&label=ci
+[github-actions-ci-url]: https://github.com/jshttp/stream-utils/raw-body?query=workflow%3Aci

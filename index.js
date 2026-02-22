@@ -1,248 +1,336 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.createLRU = void 0;
-const createLRU = (options) => {
-    let { max } = options;
-    if (!(Number.isInteger(max) && max > 0))
-        throw new TypeError('`max` must be a positive integer');
-    let size = 0;
-    let head = 0;
-    let tail = 0;
-    let free = [];
-    const { onEviction } = options;
-    const keyMap = new Map();
-    const keyList = new Array(max).fill(undefined);
-    const valList = new Array(max).fill(undefined);
-    const next = new Array(max).fill(0);
-    const prev = new Array(max).fill(0);
-    const linkTail = (index) => {
-        next[tail] = index;
-        prev[index] = tail;
-        next[index] = 0;
-        tail = index;
-    };
-    const moveToTail = (index) => {
-        if (index === tail)
-            return;
-        const nextIndex = next[index];
-        const prevIndex = prev[index];
-        if (index === head)
-            head = nextIndex;
-        else
-            next[prevIndex] = nextIndex;
-        prev[nextIndex] = prevIndex;
-        linkTail(index);
-    };
-    const _shrink = (newMax) => {
-        let current = tail;
-        const preserve = Math.min(size, newMax);
-        const remove = size - preserve;
-        const newKeyList = new Array(preserve);
-        const newValList = new Array(preserve);
-        for (let i = 0; i < remove; i++) {
-            const key = keyList[head];
-            onEviction === null || onEviction === void 0 ? void 0 : onEviction(key, valList[head]);
-            keyMap.delete(key);
-            head = next[head];
-        }
-        for (let i = preserve - 1; i >= 0; i--) {
-            newKeyList[i] = keyList[current];
-            newValList[i] = valList[current];
-            keyMap.set(keyList[current], i);
-            current = prev[current];
-        }
-        head = 0;
-        tail = preserve - 1;
-        size = preserve;
-        keyList.length = newMax;
-        valList.length = newMax;
-        next.length = newMax;
-        prev.length = newMax;
-        for (let i = 0; i < preserve; i++) {
-            keyList[i] = newKeyList[i];
-            valList[i] = newValList[i];
-            next[i] = i + 1;
-            prev[i] = i - 1;
-        }
-        free = [];
-        for (let i = preserve; i < newMax; i++)
-            free.push(i);
-    };
-    const _grow = (newMax) => {
-        keyList.length = newMax;
-        valList.length = newMax;
-        next.length = newMax;
-        prev.length = newMax;
-        keyList.fill(undefined, max);
-        valList.fill(undefined, max);
-        next.fill(0, max);
-        prev.fill(0, max);
-    };
-    return {
-        /** Adds a key-value pair to the cache. Updates the value if the key already exists. */
-        set(key, value) {
-            if (key === undefined)
-                return;
-            let index = keyMap.get(key);
-            if (index === undefined) {
-                if (size === max) {
-                    index = head;
-                    const evictKey = keyList[index];
-                    onEviction === null || onEviction === void 0 ? void 0 : onEviction(evictKey, valList[index]);
-                    keyMap.delete(evictKey);
-                    head = next[index];
-                    prev[head] = 0;
-                }
-                else {
-                    index = free.length > 0 ? free.pop() : size;
-                    size++;
-                }
-                keyMap.set(key, index);
-                keyList[index] = key;
-                valList[index] = value;
-                if (size === 1)
-                    head = tail = index;
-                else
-                    linkTail(index);
-            }
-            else {
-                onEviction === null || onEviction === void 0 ? void 0 : onEviction(key, valList[index]);
-                valList[index] = value;
-                moveToTail(index);
-            }
-        },
-        /** Retrieves the value for a given key and moves the key to the most recent position. */
-        get(key) {
-            const index = keyMap.get(key);
-            if (index === undefined)
-                return;
-            if (index !== tail)
-                moveToTail(index);
-            return valList[index];
-        },
-        /** Retrieves the value for a given key without changing its position. */
-        peek: (key) => {
-            const index = keyMap.get(key);
-            return index !== undefined ? valList[index] : undefined;
-        },
-        /** Checks if a key exists in the cache. */
-        has: (key) => keyMap.has(key),
-        /** Iterates over all keys in the cache, from most recent to least recent. */
-        *keys() {
-            let current = tail;
-            for (let i = 0; i < size; i++) {
-                yield keyList[current];
-                current = prev[current];
-            }
-        },
-        /** Iterates over all values in the cache, from most recent to least recent. */
-        *values() {
-            let current = tail;
-            for (let i = 0; i < size; i++) {
-                yield valList[current];
-                current = prev[current];
-            }
-        },
-        /** Iterates over `[key, value]` pairs in the cache, from most recent to least recent. */
-        *entries() {
-            let current = tail;
-            for (let i = 0; i < size; i++) {
-                yield [keyList[current], valList[current]];
-                current = prev[current];
-            }
-        },
-        /** Iterates over each value-key pair in the cache, from most recent to least recent. */
-        forEach: (callback) => {
-            let current = tail;
-            for (let i = 0; i < size; i++) {
-                const key = keyList[current];
-                const value = valList[current];
-                callback(value, key);
-                current = prev[current];
-            }
-        },
-        /** Deletes a key-value pair from the cache. */
-        delete(key) {
-            const index = keyMap.get(key);
-            if (index === undefined)
-                return false;
-            onEviction === null || onEviction === void 0 ? void 0 : onEviction(key, valList[index]);
-            keyMap.delete(key);
-            free.push(index);
-            keyList[index] = undefined;
-            valList[index] = undefined;
-            const prevIndex = prev[index];
-            const nextIndex = next[index];
-            if (index === head)
-                head = nextIndex;
-            else
-                next[prevIndex] = nextIndex;
-            if (index === tail)
-                tail = prevIndex;
-            else
-                prev[nextIndex] = prevIndex;
-            size--;
-            return true;
-        },
-        /** Evicts the oldest item or the specified number of the oldest items from the cache. */
-        evict: (number) => {
-            let toPrune = Math.min(number, size);
-            while (toPrune > 0) {
-                const evictHead = head;
-                const key = keyList[evictHead];
-                onEviction === null || onEviction === void 0 ? void 0 : onEviction(key, valList[evictHead]);
-                keyMap.delete(key);
-                keyList[evictHead] = undefined;
-                valList[evictHead] = undefined;
-                head = next[evictHead];
-                prev[head] = 0;
-                size--;
-                free.push(evictHead);
-                toPrune--;
-            }
-            if (size === 0)
-                head = tail = 0;
-        },
-        /** Clears all key-value pairs from the cache. */
-        clear() {
-            if (onEviction) {
-                let current = head;
-                for (let i = 0; i < size; i++) {
-                    onEviction(keyList[current], valList[current]);
-                    current = next[current];
-                }
-            }
-            keyMap.clear();
-            keyList.fill(undefined);
-            valList.fill(undefined);
-            free = [];
-            size = 0;
-            head = tail = 0;
-        },
-        /** Resizes the cache to a new maximum size, evicting items if necessary. */
-        resize: (newMax) => {
-            if (!(Number.isInteger(newMax) && newMax > 0))
-                throw new TypeError('`max` must be a positive integer');
-            if (newMax === max)
-                return;
-            if (newMax < max)
-                _shrink(newMax);
-            else
-                _grow(newMax);
-            max = newMax;
-        },
-        /** Returns the maximum number of items that can be stored in the cache. */
-        get max() {
-            return max;
-        },
-        /** Returns the number of items currently stored in the cache. */
-        get size() {
-            return size;
-        },
-        /** Returns the number of currently available slots in the cache before reaching the maximum size. */
-        get available() {
-            return max - size;
-        },
-    };
-};
-exports.createLRU = createLRU;
+/*!
+ * raw-body
+ * Copyright(c) 2013-2014 Jonathan Ong
+ * Copyright(c) 2014-2022 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+'use strict'
+
+/**
+ * Module dependencies.
+ * @private
+ */
+
+var asyncHooks = tryRequireAsyncHooks()
+var bytes = require('bytes')
+var createError = require('http-errors')
+var iconv = require('iconv-lite')
+var unpipe = require('unpipe')
+
+/**
+ * Module exports.
+ * @public
+ */
+
+module.exports = getRawBody
+
+/**
+ * Module variables.
+ * @private
+ */
+
+var ICONV_ENCODING_MESSAGE_REGEXP = /^Encoding not recognized: /
+
+/**
+ * Get the decoder for a given encoding.
+ *
+ * @param {string} encoding
+ * @private
+ */
+
+function getDecoder (encoding) {
+  if (!encoding) return null
+
+  try {
+    return iconv.getDecoder(encoding)
+  } catch (e) {
+    // error getting decoder
+    if (!ICONV_ENCODING_MESSAGE_REGEXP.test(e.message)) throw e
+
+    // the encoding was not found
+    throw createError(415, 'specified encoding unsupported', {
+      encoding: encoding,
+      type: 'encoding.unsupported'
+    })
+  }
+}
+
+/**
+ * Get the raw body of a stream (typically HTTP).
+ *
+ * @param {object} stream
+ * @param {object|string|function} [options]
+ * @param {function} [callback]
+ * @public
+ */
+
+function getRawBody (stream, options, callback) {
+  var done = callback
+  var opts = options || {}
+
+  // light validation
+  if (stream === undefined) {
+    throw new TypeError('argument stream is required')
+  } else if (typeof stream !== 'object' || stream === null || typeof stream.on !== 'function') {
+    throw new TypeError('argument stream must be a stream')
+  }
+
+  if (options === true || typeof options === 'string') {
+    // short cut for encoding
+    opts = {
+      encoding: options
+    }
+  }
+
+  if (typeof options === 'function') {
+    done = options
+    opts = {}
+  }
+
+  // validate callback is a function, if provided
+  if (done !== undefined && typeof done !== 'function') {
+    throw new TypeError('argument callback must be a function')
+  }
+
+  // require the callback without promises
+  if (!done && !global.Promise) {
+    throw new TypeError('argument callback is required')
+  }
+
+  // get encoding
+  var encoding = opts.encoding !== true
+    ? opts.encoding
+    : 'utf-8'
+
+  // convert the limit to an integer
+  var limit = bytes.parse(opts.limit)
+
+  // convert the expected length to an integer
+  var length = opts.length != null && !isNaN(opts.length)
+    ? parseInt(opts.length, 10)
+    : null
+
+  if (done) {
+    // classic callback style
+    return readStream(stream, encoding, length, limit, wrap(done))
+  }
+
+  return new Promise(function executor (resolve, reject) {
+    readStream(stream, encoding, length, limit, function onRead (err, buf) {
+      if (err) return reject(err)
+      resolve(buf)
+    })
+  })
+}
+
+/**
+ * Halt a stream.
+ *
+ * @param {Object} stream
+ * @private
+ */
+
+function halt (stream) {
+  // unpipe everything from the stream
+  unpipe(stream)
+
+  // pause stream
+  if (typeof stream.pause === 'function') {
+    stream.pause()
+  }
+}
+
+/**
+ * Read the data from the stream.
+ *
+ * @param {object} stream
+ * @param {string} encoding
+ * @param {number} length
+ * @param {number} limit
+ * @param {function} callback
+ * @public
+ */
+
+function readStream (stream, encoding, length, limit, callback) {
+  var complete = false
+  var sync = true
+
+  // check the length and limit options.
+  // note: we intentionally leave the stream paused,
+  // so users should handle the stream themselves.
+  if (limit !== null && length !== null && length > limit) {
+    return done(createError(413, 'request entity too large', {
+      expected: length,
+      length: length,
+      limit: limit,
+      type: 'entity.too.large'
+    }))
+  }
+
+  // streams1: assert request encoding is buffer.
+  // streams2+: assert the stream encoding is buffer.
+  //   stream._decoder: streams1
+  //   state.encoding: streams2
+  //   state.decoder: streams2, specifically < 0.10.6
+  var state = stream._readableState
+  if (stream._decoder || (state && (state.encoding || state.decoder))) {
+    // developer error
+    return done(createError(500, 'stream encoding should not be set', {
+      type: 'stream.encoding.set'
+    }))
+  }
+
+  if (typeof stream.readable !== 'undefined' && !stream.readable) {
+    return done(createError(500, 'stream is not readable', {
+      type: 'stream.not.readable'
+    }))
+  }
+
+  var received = 0
+  var decoder
+
+  try {
+    decoder = getDecoder(encoding)
+  } catch (err) {
+    return done(err)
+  }
+
+  var buffer = decoder
+    ? ''
+    : []
+
+  // attach listeners
+  stream.on('aborted', onAborted)
+  stream.on('close', cleanup)
+  stream.on('data', onData)
+  stream.on('end', onEnd)
+  stream.on('error', onEnd)
+
+  // mark sync section complete
+  sync = false
+
+  function done () {
+    var args = new Array(arguments.length)
+
+    // copy arguments
+    for (var i = 0; i < args.length; i++) {
+      args[i] = arguments[i]
+    }
+
+    // mark complete
+    complete = true
+
+    if (sync) {
+      process.nextTick(invokeCallback)
+    } else {
+      invokeCallback()
+    }
+
+    function invokeCallback () {
+      cleanup()
+
+      if (args[0]) {
+        // halt the stream on error
+        halt(stream)
+      }
+
+      callback.apply(null, args)
+    }
+  }
+
+  function onAborted () {
+    if (complete) return
+
+    done(createError(400, 'request aborted', {
+      code: 'ECONNABORTED',
+      expected: length,
+      length: length,
+      received: received,
+      type: 'request.aborted'
+    }))
+  }
+
+  function onData (chunk) {
+    if (complete) return
+
+    received += chunk.length
+
+    if (limit !== null && received > limit) {
+      done(createError(413, 'request entity too large', {
+        limit: limit,
+        received: received,
+        type: 'entity.too.large'
+      }))
+    } else if (decoder) {
+      buffer += decoder.write(chunk)
+    } else {
+      buffer.push(chunk)
+    }
+  }
+
+  function onEnd (err) {
+    if (complete) return
+    if (err) return done(err)
+
+    if (length !== null && received !== length) {
+      done(createError(400, 'request size did not match content length', {
+        expected: length,
+        length: length,
+        received: received,
+        type: 'request.size.invalid'
+      }))
+    } else {
+      var string = decoder
+        ? buffer + (decoder.end() || '')
+        : Buffer.concat(buffer)
+      done(null, string)
+    }
+  }
+
+  function cleanup () {
+    buffer = null
+
+    stream.removeListener('aborted', onAborted)
+    stream.removeListener('data', onData)
+    stream.removeListener('end', onEnd)
+    stream.removeListener('error', onEnd)
+    stream.removeListener('close', cleanup)
+  }
+}
+
+/**
+ * Try to require async_hooks
+ * @private
+ */
+
+function tryRequireAsyncHooks () {
+  try {
+    return require('async_hooks')
+  } catch (e) {
+    return {}
+  }
+}
+
+/**
+ * Wrap function with async resource, if possible.
+ * AsyncResource.bind static method backported.
+ * @private
+ */
+
+function wrap (fn) {
+  var res
+
+  // create anonymous resource
+  if (asyncHooks.AsyncResource) {
+    res = new asyncHooks.AsyncResource(fn.name || 'bound-anonymous-fn')
+  }
+
+  // incompatible node.js
+  if (!res || !res.runInAsyncScope) {
+    return fn
+  }
+
+  // return bound function
+  return res.runInAsyncScope.bind(res, fn, null)
+}

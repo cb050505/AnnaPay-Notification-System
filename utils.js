@@ -1,596 +1,342 @@
 'use strict';
 
-function parseContentType(str) {
-  if (str.length === 0)
-    return;
+var formats = require('./formats');
+var getSideChannel = require('side-channel');
 
-  const params = Object.create(null);
-  let i = 0;
+var has = Object.prototype.hasOwnProperty;
+var isArray = Array.isArray;
 
-  // Parse type
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      if (code !== 47/* '/' */ || i === 0)
-        return;
-      break;
-    }
-  }
-  // Check for type without subtype
-  if (i === str.length)
-    return;
+// Track objects created from arrayLimit overflow using side-channel
+// Stores the current max numeric index for O(1) lookup
+var overflowChannel = getSideChannel();
 
-  const type = str.slice(0, i).toLowerCase();
-
-  // Parse subtype
-  const subtypeStart = ++i;
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      // Make sure we have a subtype
-      if (i === subtypeStart)
-        return;
-
-      if (parseContentTypeParams(str, i, params) === undefined)
-        return;
-      break;
-    }
-  }
-  // Make sure we have a subtype
-  if (i === subtypeStart)
-    return;
-
-  const subtype = str.slice(subtypeStart, i).toLowerCase();
-
-  return { type, subtype, params };
-}
-
-function parseContentTypeParams(str, i, params) {
-  while (i < str.length) {
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace
-    if (i === str.length)
-      break;
-
-    // Check for malformed parameter
-    if (str.charCodeAt(i++) !== 59/* ';' */)
-      return;
-
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace (malformed)
-    if (i === str.length)
-      return;
-
-    let name;
-    const nameStart = i;
-    // Parse parameter name
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (TOKEN[code] !== 1) {
-        if (code !== 61/* '=' */)
-          return;
-        break;
-      }
-    }
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    name = str.slice(nameStart, i);
-    ++i; // Skip over '='
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    let value = '';
-    let valueStart;
-    if (str.charCodeAt(i) === 34/* '"' */) {
-      valueStart = ++i;
-      let escaping = false;
-      // Parse quoted value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (code === 92/* '\\' */) {
-          if (escaping) {
-            valueStart = i;
-            escaping = false;
-          } else {
-            value += str.slice(valueStart, i);
-            escaping = true;
-          }
-          continue;
-        }
-        if (code === 34/* '"' */) {
-          if (escaping) {
-            valueStart = i;
-            escaping = false;
-            continue;
-          }
-          value += str.slice(valueStart, i);
-          break;
-        }
-        if (escaping) {
-          valueStart = i - 1;
-          escaping = false;
-        }
-        // Invalid unescaped quoted character (malformed)
-        if (QDTEXT[code] !== 1)
-          return;
-      }
-
-      // No end quote (malformed)
-      if (i === str.length)
-        return;
-
-      ++i; // Skip over double quote
-    } else {
-      valueStart = i;
-      // Parse unquoted value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (TOKEN[code] !== 1) {
-          // No value (malformed)
-          if (i === valueStart)
-            return;
-          break;
-        }
-      }
-      value = str.slice(valueStart, i);
-    }
-
-    name = name.toLowerCase();
-    if (params[name] === undefined)
-      params[name] = value;
-  }
-
-  return params;
-}
-
-function parseDisposition(str, defDecoder) {
-  if (str.length === 0)
-    return;
-
-  const params = Object.create(null);
-  let i = 0;
-
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      if (parseDispositionParams(str, i, params, defDecoder) === undefined)
-        return;
-      break;
-    }
-  }
-
-  const type = str.slice(0, i).toLowerCase();
-
-  return { type, params };
-}
-
-function parseDispositionParams(str, i, params, defDecoder) {
-  while (i < str.length) {
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace
-    if (i === str.length)
-      break;
-
-    // Check for malformed parameter
-    if (str.charCodeAt(i++) !== 59/* ';' */)
-      return;
-
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace (malformed)
-    if (i === str.length)
-      return;
-
-    let name;
-    const nameStart = i;
-    // Parse parameter name
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (TOKEN[code] !== 1) {
-        if (code === 61/* '=' */)
-          break;
-        return;
-      }
-    }
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    let value = '';
-    let valueStart;
-    let charset;
-    //~ let lang;
-    name = str.slice(nameStart, i);
-    if (name.charCodeAt(name.length - 1) === 42/* '*' */) {
-      // Extended value
-
-      const charsetStart = ++i;
-      // Parse charset name
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (CHARSET[code] !== 1) {
-          if (code !== 39/* '\'' */)
-            return;
-          break;
-        }
-      }
-
-      // Incomplete charset (malformed)
-      if (i === str.length)
-        return;
-
-      charset = str.slice(charsetStart, i);
-      ++i; // Skip over the '\''
-
-      //~ const langStart = ++i;
-      // Parse language name
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (code === 39/* '\'' */)
-          break;
-      }
-
-      // Incomplete language (malformed)
-      if (i === str.length)
-        return;
-
-      //~ lang = str.slice(langStart, i);
-      ++i; // Skip over the '\''
-
-      // No value (malformed)
-      if (i === str.length)
-        return;
-
-      valueStart = i;
-
-      let encode = 0;
-      // Parse value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (EXTENDED_VALUE[code] !== 1) {
-          if (code === 37/* '%' */) {
-            let hexUpper;
-            let hexLower;
-            if (i + 2 < str.length
-                && (hexUpper = HEX_VALUES[str.charCodeAt(i + 1)]) !== -1
-                && (hexLower = HEX_VALUES[str.charCodeAt(i + 2)]) !== -1) {
-              const byteVal = (hexUpper << 4) + hexLower;
-              value += str.slice(valueStart, i);
-              value += String.fromCharCode(byteVal);
-              i += 2;
-              valueStart = i + 1;
-              if (byteVal >= 128)
-                encode = 2;
-              else if (encode === 0)
-                encode = 1;
-              continue;
-            }
-            // '%' disallowed in non-percent encoded contexts (malformed)
-            return;
-          }
-          break;
-        }
-      }
-
-      value += str.slice(valueStart, i);
-      value = convertToUTF8(value, charset, encode);
-      if (value === undefined)
-        return;
-    } else {
-      // Non-extended value
-
-      ++i; // Skip over '='
-
-      // No value (malformed)
-      if (i === str.length)
-        return;
-
-      if (str.charCodeAt(i) === 34/* '"' */) {
-        valueStart = ++i;
-        let escaping = false;
-        // Parse quoted value
-        for (; i < str.length; ++i) {
-          const code = str.charCodeAt(i);
-          if (code === 92/* '\\' */) {
-            if (escaping) {
-              valueStart = i;
-              escaping = false;
-            } else {
-              value += str.slice(valueStart, i);
-              escaping = true;
-            }
-            continue;
-          }
-          if (code === 34/* '"' */) {
-            if (escaping) {
-              valueStart = i;
-              escaping = false;
-              continue;
-            }
-            value += str.slice(valueStart, i);
-            break;
-          }
-          if (escaping) {
-            valueStart = i - 1;
-            escaping = false;
-          }
-          // Invalid unescaped quoted character (malformed)
-          if (QDTEXT[code] !== 1)
-            return;
-        }
-
-        // No end quote (malformed)
-        if (i === str.length)
-          return;
-
-        ++i; // Skip over double quote
-      } else {
-        valueStart = i;
-        // Parse unquoted value
-        for (; i < str.length; ++i) {
-          const code = str.charCodeAt(i);
-          if (TOKEN[code] !== 1) {
-            // No value (malformed)
-            if (i === valueStart)
-              return;
-            break;
-          }
-        }
-        value = str.slice(valueStart, i);
-      }
-
-      value = defDecoder(value, 2);
-      if (value === undefined)
-        return;
-    }
-
-    name = name.toLowerCase();
-    if (params[name] === undefined)
-      params[name] = value;
-  }
-
-  return params;
-}
-
-function getDecoder(charset) {
-  let lc;
-  while (true) {
-    switch (charset) {
-      case 'utf-8':
-      case 'utf8':
-        return decoders.utf8;
-      case 'latin1':
-      case 'ascii': // TODO: Make these a separate, strict decoder?
-      case 'us-ascii':
-      case 'iso-8859-1':
-      case 'iso8859-1':
-      case 'iso88591':
-      case 'iso_8859-1':
-      case 'windows-1252':
-      case 'iso_8859-1:1987':
-      case 'cp1252':
-      case 'x-cp1252':
-        return decoders.latin1;
-      case 'utf16le':
-      case 'utf-16le':
-      case 'ucs2':
-      case 'ucs-2':
-        return decoders.utf16le;
-      case 'base64':
-        return decoders.base64;
-      default:
-        if (lc === undefined) {
-          lc = true;
-          charset = charset.toLowerCase();
-          continue;
-        }
-        return decoders.other.bind(charset);
-    }
-  }
-}
-
-const decoders = {
-  utf8: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string') {
-      // If `data` never had any percent-encoded bytes or never had any that
-      // were outside of the ASCII range, then we can safely just return the
-      // input since UTF-8 is ASCII compatible
-      if (hint < 2)
-        return data;
-
-      data = Buffer.from(data, 'latin1');
-    }
-    return data.utf8Slice(0, data.length);
-  },
-
-  latin1: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      return data;
-    return data.latin1Slice(0, data.length);
-  },
-
-  utf16le: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    return data.ucs2Slice(0, data.length);
-  },
-
-  base64: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    return data.base64Slice(0, data.length);
-  },
-
-  other: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    try {
-      const decoder = new TextDecoder(this);
-      return decoder.decode(data);
-    } catch {}
-  },
+var markOverflow = function markOverflow(obj, maxIndex) {
+    overflowChannel.set(obj, maxIndex);
+    return obj;
 };
 
-function convertToUTF8(data, charset, hint) {
-  const decode = getDecoder(charset);
-  if (decode)
-    return decode(data, hint);
-}
+var isOverflow = function isOverflow(obj) {
+    return overflowChannel.has(obj);
+};
 
-function basename(path) {
-  if (typeof path !== 'string')
-    return '';
-  for (let i = path.length - 1; i >= 0; --i) {
-    switch (path.charCodeAt(i)) {
-      case 0x2F: // '/'
-      case 0x5C: // '\'
-        path = path.slice(i + 1);
-        return (path === '..' || path === '.' ? '' : path);
+var getMaxIndex = function getMaxIndex(obj) {
+    return overflowChannel.get(obj);
+};
+
+var setMaxIndex = function setMaxIndex(obj, maxIndex) {
+    overflowChannel.set(obj, maxIndex);
+};
+
+var hexTable = (function () {
+    var array = [];
+    for (var i = 0; i < 256; ++i) {
+        array[array.length] = '%' + ((i < 16 ? '0' : '') + i.toString(16)).toUpperCase();
     }
-  }
-  return (path === '..' || path === '.' ? '' : path);
-}
 
-const TOKEN = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+    return array;
+}());
 
-const QDTEXT = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-];
+var compactQueue = function compactQueue(queue) {
+    while (queue.length > 1) {
+        var item = queue.pop();
+        var obj = item.obj[item.prop];
 
-const CHARSET = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+        if (isArray(obj)) {
+            var compacted = [];
 
-const EXTENDED_VALUE = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+            for (var j = 0; j < obj.length; ++j) {
+                if (typeof obj[j] !== 'undefined') {
+                    compacted[compacted.length] = obj[j];
+                }
+            }
 
-/* eslint-disable no-multi-spaces */
-const HEX_VALUES = [
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1,
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-];
-/* eslint-enable no-multi-spaces */
+            item.obj[item.prop] = compacted;
+        }
+    }
+};
+
+var arrayToObject = function arrayToObject(source, options) {
+    var obj = options && options.plainObjects ? { __proto__: null } : {};
+    for (var i = 0; i < source.length; ++i) {
+        if (typeof source[i] !== 'undefined') {
+            obj[i] = source[i];
+        }
+    }
+
+    return obj;
+};
+
+var merge = function merge(target, source, options) {
+    /* eslint no-param-reassign: 0 */
+    if (!source) {
+        return target;
+    }
+
+    if (typeof source !== 'object' && typeof source !== 'function') {
+        if (isArray(target)) {
+            var nextIndex = target.length;
+            if (options && typeof options.arrayLimit === 'number' && nextIndex > options.arrayLimit) {
+                return markOverflow(arrayToObject(target.concat(source), options), nextIndex);
+            }
+            target[nextIndex] = source;
+        } else if (target && typeof target === 'object') {
+            if (isOverflow(target)) {
+                // Add at next numeric index for overflow objects
+                var newIndex = getMaxIndex(target) + 1;
+                target[newIndex] = source;
+                setMaxIndex(target, newIndex);
+            } else if (options && options.strictMerge) {
+                return [target, source];
+            } else if (
+                (options && (options.plainObjects || options.allowPrototypes))
+                || !has.call(Object.prototype, source)
+            ) {
+                target[source] = true;
+            }
+        } else {
+            return [target, source];
+        }
+
+        return target;
+    }
+
+    if (!target || typeof target !== 'object') {
+        if (isOverflow(source)) {
+            // Create new object with target at 0, source values shifted by 1
+            var sourceKeys = Object.keys(source);
+            var result = options && options.plainObjects
+                ? { __proto__: null, 0: target }
+                : { 0: target };
+            for (var m = 0; m < sourceKeys.length; m++) {
+                var oldKey = parseInt(sourceKeys[m], 10);
+                result[oldKey + 1] = source[sourceKeys[m]];
+            }
+            return markOverflow(result, getMaxIndex(source) + 1);
+        }
+        var combined = [target].concat(source);
+        if (options && typeof options.arrayLimit === 'number' && combined.length > options.arrayLimit) {
+            return markOverflow(arrayToObject(combined, options), combined.length - 1);
+        }
+        return combined;
+    }
+
+    var mergeTarget = target;
+    if (isArray(target) && !isArray(source)) {
+        mergeTarget = arrayToObject(target, options);
+    }
+
+    if (isArray(target) && isArray(source)) {
+        source.forEach(function (item, i) {
+            if (has.call(target, i)) {
+                var targetItem = target[i];
+                if (targetItem && typeof targetItem === 'object' && item && typeof item === 'object') {
+                    target[i] = merge(targetItem, item, options);
+                } else {
+                    target[target.length] = item;
+                }
+            } else {
+                target[i] = item;
+            }
+        });
+        return target;
+    }
+
+    return Object.keys(source).reduce(function (acc, key) {
+        var value = source[key];
+
+        if (has.call(acc, key)) {
+            acc[key] = merge(acc[key], value, options);
+        } else {
+            acc[key] = value;
+        }
+
+        if (isOverflow(source) && !isOverflow(acc)) {
+            markOverflow(acc, getMaxIndex(source));
+        }
+        if (isOverflow(acc)) {
+            var keyNum = parseInt(key, 10);
+            if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
+                setMaxIndex(acc, keyNum);
+            }
+        }
+
+        return acc;
+    }, mergeTarget);
+};
+
+var assign = function assignSingleSource(target, source) {
+    return Object.keys(source).reduce(function (acc, key) {
+        acc[key] = source[key];
+        return acc;
+    }, target);
+};
+
+var decode = function (str, defaultDecoder, charset) {
+    var strWithoutPlus = str.replace(/\+/g, ' ');
+    if (charset === 'iso-8859-1') {
+        // unescape never throws, no try...catch needed:
+        return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
+    }
+    // utf-8
+    try {
+        return decodeURIComponent(strWithoutPlus);
+    } catch (e) {
+        return strWithoutPlus;
+    }
+};
+
+var limit = 1024;
+
+/* eslint operator-linebreak: [2, "before"] */
+
+var encode = function encode(str, defaultEncoder, charset, kind, format) {
+    // This code was originally written by Brian White (mscdex) for the io.js core querystring library.
+    // It has been adapted here for stricter adherence to RFC 3986
+    if (str.length === 0) {
+        return str;
+    }
+
+    var string = str;
+    if (typeof str === 'symbol') {
+        string = Symbol.prototype.toString.call(str);
+    } else if (typeof str !== 'string') {
+        string = String(str);
+    }
+
+    if (charset === 'iso-8859-1') {
+        return escape(string).replace(/%u[0-9a-f]{4}/gi, function ($0) {
+            return '%26%23' + parseInt($0.slice(2), 16) + '%3B';
+        });
+    }
+
+    var out = '';
+    for (var j = 0; j < string.length; j += limit) {
+        var segment = string.length >= limit ? string.slice(j, j + limit) : string;
+        var arr = [];
+
+        for (var i = 0; i < segment.length; ++i) {
+            var c = segment.charCodeAt(i);
+            if (
+                c === 0x2D // -
+                || c === 0x2E // .
+                || c === 0x5F // _
+                || c === 0x7E // ~
+                || (c >= 0x30 && c <= 0x39) // 0-9
+                || (c >= 0x41 && c <= 0x5A) // a-z
+                || (c >= 0x61 && c <= 0x7A) // A-Z
+                || (format === formats.RFC1738 && (c === 0x28 || c === 0x29)) // ( )
+            ) {
+                arr[arr.length] = segment.charAt(i);
+                continue;
+            }
+
+            if (c < 0x80) {
+                arr[arr.length] = hexTable[c];
+                continue;
+            }
+
+            if (c < 0x800) {
+                arr[arr.length] = hexTable[0xC0 | (c >> 6)]
+                    + hexTable[0x80 | (c & 0x3F)];
+                continue;
+            }
+
+            if (c < 0xD800 || c >= 0xE000) {
+                arr[arr.length] = hexTable[0xE0 | (c >> 12)]
+                    + hexTable[0x80 | ((c >> 6) & 0x3F)]
+                    + hexTable[0x80 | (c & 0x3F)];
+                continue;
+            }
+
+            i += 1;
+            c = 0x10000 + (((c & 0x3FF) << 10) | (segment.charCodeAt(i) & 0x3FF));
+
+            arr[arr.length] = hexTable[0xF0 | (c >> 18)]
+                + hexTable[0x80 | ((c >> 12) & 0x3F)]
+                + hexTable[0x80 | ((c >> 6) & 0x3F)]
+                + hexTable[0x80 | (c & 0x3F)];
+        }
+
+        out += arr.join('');
+    }
+
+    return out;
+};
+
+var compact = function compact(value) {
+    var queue = [{ obj: { o: value }, prop: 'o' }];
+    var refs = [];
+
+    for (var i = 0; i < queue.length; ++i) {
+        var item = queue[i];
+        var obj = item.obj[item.prop];
+
+        var keys = Object.keys(obj);
+        for (var j = 0; j < keys.length; ++j) {
+            var key = keys[j];
+            var val = obj[key];
+            if (typeof val === 'object' && val !== null && refs.indexOf(val) === -1) {
+                queue[queue.length] = { obj: obj, prop: key };
+                refs[refs.length] = val;
+            }
+        }
+    }
+
+    compactQueue(queue);
+
+    return value;
+};
+
+var isRegExp = function isRegExp(obj) {
+    return Object.prototype.toString.call(obj) === '[object RegExp]';
+};
+
+var isBuffer = function isBuffer(obj) {
+    if (!obj || typeof obj !== 'object') {
+        return false;
+    }
+
+    return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
+};
+
+var combine = function combine(a, b, arrayLimit, plainObjects) {
+    // If 'a' is already an overflow object, add to it
+    if (isOverflow(a)) {
+        var newIndex = getMaxIndex(a) + 1;
+        a[newIndex] = b;
+        setMaxIndex(a, newIndex);
+        return a;
+    }
+
+    var result = [].concat(a, b);
+    if (result.length > arrayLimit) {
+        return markOverflow(arrayToObject(result, { plainObjects: plainObjects }), result.length - 1);
+    }
+    return result;
+};
+
+var maybeMap = function maybeMap(val, fn) {
+    if (isArray(val)) {
+        var mapped = [];
+        for (var i = 0; i < val.length; i += 1) {
+            mapped[mapped.length] = fn(val[i]);
+        }
+        return mapped;
+    }
+    return fn(val);
+};
 
 module.exports = {
-  basename,
-  convertToUTF8,
-  getDecoder,
-  parseContentType,
-  parseDisposition,
+    arrayToObject: arrayToObject,
+    assign: assign,
+    combine: combine,
+    compact: compact,
+    decode: decode,
+    encode: encode,
+    isBuffer: isBuffer,
+    isOverflow: isOverflow,
+    isRegExp: isRegExp,
+    markOverflow: markOverflow,
+    maybeMap: maybeMap,
+    merge: merge
 };

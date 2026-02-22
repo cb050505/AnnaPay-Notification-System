@@ -1,38 +1,85 @@
-export type CacheOptions<Key = unknown, Value = unknown> = {
-    /** Maximum number of items the cache can hold. */
-    max: number;
-    /** Function called when an item is evicted from the cache. */
-    onEviction?: (key: Key, value: Value) => unknown;
-};
-export declare const createLRU: <Key, Value>(options: CacheOptions<Key, Value>) => {
-    /** Adds a key-value pair to the cache. Updates the value if the key already exists. */
-    set(key: Key, value: Value): undefined;
-    /** Retrieves the value for a given key and moves the key to the most recent position. */
-    get(key: Key): Value | undefined;
-    /** Retrieves the value for a given key without changing its position. */
-    peek: (key: Key) => Value | undefined;
-    /** Checks if a key exists in the cache. */
-    has: (key: Key) => boolean;
-    /** Iterates over all keys in the cache, from most recent to least recent. */
-    keys(): IterableIterator<Key>;
-    /** Iterates over all values in the cache, from most recent to least recent. */
-    values(): IterableIterator<Value>;
-    /** Iterates over `[key, value]` pairs in the cache, from most recent to least recent. */
-    entries(): IterableIterator<[Key, Value]>;
-    /** Iterates over each value-key pair in the cache, from most recent to least recent. */
-    forEach: (callback: (value: Value, key: Key) => unknown) => undefined;
-    /** Deletes a key-value pair from the cache. */
-    delete(key: Key): boolean;
-    /** Evicts the oldest item or the specified number of the oldest items from the cache. */
-    evict: (number: number) => undefined;
-    /** Clears all key-value pairs from the cache. */
-    clear(): undefined;
-    /** Resizes the cache to a new maximum size, evicting items if necessary. */
-    resize: (newMax: number) => undefined;
-    /** Returns the maximum number of items that can be stored in the cache. */
-    readonly max: number;
-    /** Returns the number of items currently stored in the cache. */
-    readonly size: number;
-    /** Returns the number of currently available slots in the cache before reaching the maximum size. */
-    readonly available: number;
-};
+declare namespace getRawBody {
+  export type Encoding = string | true;
+
+  export interface Options {
+    /**
+     * The expected length of the stream.
+     */
+    length?: number | string | null;
+    /**
+     * The byte limit of the body. This is the number of bytes or any string
+     * format supported by `bytes`, for example `1000`, `'500kb'` or `'3mb'`.
+     */
+    limit?: number | string | null;
+    /**
+     * The encoding to use to decode the body into a string. By default, a
+     * `Buffer` instance will be returned when no encoding is specified. Most
+     * likely, you want `utf-8`, so setting encoding to `true` will decode as
+     * `utf-8`. You can use any type of encoding supported by `iconv-lite`.
+     */
+    encoding?: Encoding | null;
+  }
+
+  export interface RawBodyError extends Error {
+    /**
+     * The limit in bytes.
+     */
+    limit?: number;
+    /**
+     * The expected length of the stream.
+     */
+    length?: number;
+    expected?: number;
+    /**
+     * The received bytes.
+     */
+    received?: number;
+    /**
+     * The encoding.
+     */
+    encoding?: string;
+    /**
+     * The corresponding status code for the error.
+     */
+    status: number;
+    statusCode: number;
+    /**
+     * The error type.
+     */
+    type: string;
+  }
+}
+
+/**
+ * Gets the entire buffer of a stream either as a `Buffer` or a string.
+ * Validates the stream's length against an expected length and maximum
+ * limit. Ideal for parsing request bodies.
+ */
+declare function getRawBody(
+  stream: NodeJS.ReadableStream,
+  callback: (err: getRawBody.RawBodyError, body: Buffer) => void
+): void;
+
+declare function getRawBody(
+  stream: NodeJS.ReadableStream,
+  options: (getRawBody.Options & { encoding: getRawBody.Encoding }) | getRawBody.Encoding,
+  callback: (err: getRawBody.RawBodyError, body: string) => void
+): void;
+
+declare function getRawBody(
+  stream: NodeJS.ReadableStream,
+  options: getRawBody.Options,
+  callback: (err: getRawBody.RawBodyError, body: Buffer) => void
+): void;
+
+declare function getRawBody(
+  stream: NodeJS.ReadableStream,
+  options: (getRawBody.Options & { encoding: getRawBody.Encoding }) | getRawBody.Encoding
+): Promise<string>;
+
+declare function getRawBody(
+  stream: NodeJS.ReadableStream,
+  options?: getRawBody.Options
+): Promise<Buffer>;
+
+export = getRawBody;

@@ -1,138 +1,224 @@
-# combined-stream
+# Path-to-RegExp
 
-A stream that emits multiple other streams one after another.
+> Turn a path string such as `/user/:name` into a regular expression.
 
-**NB** Currently `combined-stream` works with streams version 1 only. There is ongoing effort to switch this library to streams version 2. Any help is welcome. :) Meanwhile you can explore other libraries that provide streams2 support with more or less compatibility with `combined-stream`.
-
-- [combined-stream2](https://www.npmjs.com/package/combined-stream2): A drop-in streams2-compatible replacement for the combined-stream module.
-
-- [multistream](https://www.npmjs.com/package/multistream): A stream that emits multiple other streams one after another.
+[![NPM version][npm-image]][npm-url]
+[![NPM downloads][downloads-image]][downloads-url]
+[![Build status][build-image]][build-url]
+[![Build coverage][coverage-image]][coverage-url]
+[![License][license-image]][license-url]
 
 ## Installation
 
-``` bash
-npm install combined-stream
+```
+npm install path-to-regexp --save
 ```
 
 ## Usage
 
-Here is a simple example that shows how you can use combined-stream to combine
-two files into one:
-
-``` javascript
-var CombinedStream = require('combined-stream');
-var fs = require('fs');
-
-var combinedStream = CombinedStream.create();
-combinedStream.append(fs.createReadStream('file1.txt'));
-combinedStream.append(fs.createReadStream('file2.txt'));
-
-combinedStream.pipe(fs.createWriteStream('combined.txt'));
+```js
+const {
+  match,
+  pathToRegexp,
+  compile,
+  parse,
+  stringify,
+} = require("path-to-regexp");
 ```
 
-While the example above works great, it will pause all source streams until
-they are needed. If you don't want that to happen, you can set `pauseStreams`
-to `false`:
+### Parameters
 
-``` javascript
-var CombinedStream = require('combined-stream');
-var fs = require('fs');
+Parameters match arbitrary strings in a path by matching up to the end of the segment, or up to any proceeding tokens. They are defined by prefixing a colon to the parameter name (`:foo`). Parameter names can use any valid JavaScript identifier, or be double quoted to use other characters (`:"param-name"`).
 
-var combinedStream = CombinedStream.create({pauseStreams: false});
-combinedStream.append(fs.createReadStream('file1.txt'));
-combinedStream.append(fs.createReadStream('file2.txt'));
+```js
+const fn = match("/:foo/:bar");
 
-combinedStream.pipe(fs.createWriteStream('combined.txt'));
+fn("/test/route");
+//=> { path: '/test/route', params: { foo: 'test', bar: 'route' } }
 ```
 
-However, what if you don't have all the source streams yet, or you don't want
-to allocate the resources (file descriptors, memory, etc.) for them right away?
-Well, in that case you can simply provide a callback that supplies the stream
-by calling a `next()` function:
+### Wildcard
 
-``` javascript
-var CombinedStream = require('combined-stream');
-var fs = require('fs');
+Wildcard parameters match one or more characters across multiple segments. They are defined the same way as regular parameters, but are prefixed with an asterisk (`*foo`).
 
-var combinedStream = CombinedStream.create();
-combinedStream.append(function(next) {
-  next(fs.createReadStream('file1.txt'));
-});
-combinedStream.append(function(next) {
-  next(fs.createReadStream('file2.txt'));
-});
+```js
+const fn = match("/*splat");
 
-combinedStream.pipe(fs.createWriteStream('combined.txt'));
+fn("/bar/baz");
+//=> { path: '/bar/baz', params: { splat: [ 'bar', 'baz' ] } }
 ```
 
-## API
+### Optional
 
-### CombinedStream.create([options])
+Braces can be used to define parts of the path that are optional.
 
-Returns a new combined stream object. Available options are:
+```js
+const fn = match("/users{/:id}/delete");
 
-* `maxDataSize`
-* `pauseStreams`
+fn("/users/delete");
+//=> { path: '/users/delete', params: {} }
 
-The effect of those options is described below.
+fn("/users/123/delete");
+//=> { path: '/users/123/delete', params: { id: '123' } }
+```
 
-### combinedStream.pauseStreams = `true`
+## Match
 
-Whether to apply back pressure to the underlaying streams. If set to `false`,
-the underlaying streams will never be paused. If set to `true`, the
-underlaying streams will be paused right after being appended, as well as when
-`delayedStream.pipe()` wants to throttle.
+The `match` function returns a function for matching strings against a path:
 
-### combinedStream.maxDataSize = `2 * 1024 * 1024`
+- **path** String, `TokenData` object, or array of strings and `TokenData` objects.
+- **options** _(optional)_ (Extends [pathToRegexp](#pathToRegexp) options)
+  - **decode** Function for decoding strings to params, or `false` to disable all processing. (default: `decodeURIComponent`)
 
-The maximum amount of bytes (or characters) to buffer for all source streams.
-If this value is exceeded, `combinedStream` emits an `'error'` event.
+```js
+const fn = match("/foo/:bar");
+```
 
-### combinedStream.dataSize = `0`
+**Please note:** `path-to-regexp` is intended for ordered data (e.g. paths, hosts). It can not handle arbitrarily ordered data (e.g. query strings, URL fragments, JSON, etc).
 
-The amount of bytes (or characters) currently buffered by `combinedStream`.
+## PathToRegexp
 
-### combinedStream.append(stream)
+The `pathToRegexp` function returns the `regexp` for matching strings against paths, and an array of `keys` for understanding the `RegExp#exec` matches.
 
-Appends the given `stream` to the combinedStream object. If `pauseStreams` is
-set to `true, this stream will also be paused right away.
+- **path** String, `TokenData` object, or array of strings and `TokenData` objects.
+- **options** _(optional)_ (See [parse](#parse) for more options)
+  - **sensitive** Regexp will be case sensitive. (default: `false`)
+  - **end** Validate the match reaches the end of the string. (default: `true`)
+  - **delimiter** The default delimiter for segments, e.g. `[^/]` for `:named` parameters. (default: `'/'`)
+  - **trailing** Allows optional trailing delimiter to match. (default: `true`)
 
-`streams` can also be a function that takes one parameter called `next`. `next`
-is a function that must be invoked in order to provide the `next` stream, see
-example above.
+```js
+const { regexp, keys } = pathToRegexp("/foo/:bar");
 
-Regardless of how the `stream` is appended, combined-stream always attaches an
-`'error'` listener to it, so you don't have to do that manually.
+regexp.exec("/foo/123"); //=> ["/foo/123", "123"]
+```
 
-Special case: `stream` can also be a String or Buffer.
+## Compile ("Reverse" Path-To-RegExp)
 
-### combinedStream.write(data)
+The `compile` function will return a function for transforming parameters into a valid path:
 
-You should not call this, `combinedStream` takes care of piping the appended
-streams into itself for you.
+- **path** A string or `TokenData` object.
+- **options** (See [parse](#parse) for more options)
+  - **delimiter** The default delimiter for segments, e.g. `[^/]` for `:named` parameters. (default: `'/'`)
+  - **encode** Function for encoding input strings for output into the path, or `false` to disable entirely. (default: `encodeURIComponent`)
 
-### combinedStream.resume()
+```js
+const toPath = compile("/user/:id");
 
-Causes `combinedStream` to start drain the streams it manages. The function is
-idempotent, and also emits a `'resume'` event each time which usually goes to
-the stream that is currently being drained.
+toPath({ id: "name" }); //=> "/user/name"
+toPath({ id: "café" }); //=> "/user/caf%C3%A9"
 
-### combinedStream.pause();
+const toPathRepeated = compile("/*segment");
 
-If `combinedStream.pauseStreams` is set to `false`, this does nothing.
-Otherwise a `'pause'` event is emitted, this goes to the stream that is
-currently being drained, so you can use it to apply back pressure.
+toPathRepeated({ segment: ["foo"] }); //=> "/foo"
+toPathRepeated({ segment: ["a", "b", "c"] }); //=> "/a/b/c"
 
-### combinedStream.end();
+// When disabling `encode`, you need to make sure inputs are encoded correctly. No arrays are accepted.
+const toPathRaw = compile("/user/:id", { encode: false });
 
-Sets `combinedStream.writable` to false, emits an `'end'` event, and removes
-all streams from the queue.
+toPathRaw({ id: "%3A%2F" }); //=> "/user/%3A%2F"
+```
 
-### combinedStream.destroy();
+## Stringify
 
-Same as `combinedStream.end()`, except it emits a `'close'` event instead of
-`'end'`.
+Transform a `TokenData` object to a Path-to-RegExp string.
+
+- **data** A `TokenData` object.
+
+```js
+const data = {
+  tokens: [
+    { type: "text", value: "/" },
+    { type: "param", name: "foo" },
+  ],
+};
+
+const path = stringify(data); //=> "/:foo"
+```
+
+## Developers
+
+- If you are rewriting paths with match and compile, consider using `encode: false` and `decode: false` to keep raw paths passed around.
+- To ensure matches work on paths containing characters usually encoded, such as emoji, consider using [encodeurl](https://github.com/pillarjs/encodeurl) for `encodePath`.
+
+### Parse
+
+The `parse` function accepts a string and returns `TokenData`, which can be used with `match` and `compile`.
+
+- **path** A string.
+- **options** _(optional)_
+  - **encodePath** A function for encoding input strings. (default: `x => x`, recommended: [`encodeurl`](https://github.com/pillarjs/encodeurl))
+
+### Tokens
+
+`TokenData` has two properties:
+
+- **tokens** A sequence of tokens, currently of types `text`, `parameter`, `wildcard`, or `group`.
+- **originalPath** The original path used with `parse`, shown in error messages to assist debugging.
+
+### Custom path
+
+In some applications you may not be able to use the `path-to-regexp` syntax, but you still want to use this library for `match` and `compile`. For example:
+
+```js
+import { match } from "path-to-regexp";
+
+const tokens = [
+  { type: "text", value: "/" },
+  { type: "parameter", name: "foo" },
+];
+const originalPath = "/[foo]"; // To help debug error messages.
+const path = { tokens, originalPath };
+const fn = match(path);
+
+fn("/test"); //=> { path: '/test', index: 0, params: { foo: 'test' } }
+```
+
+## Errors
+
+An effort has been made to ensure ambiguous paths from previous releases throw an error. This means you might be seeing an error when things worked before.
+
+### Missing parameter name
+
+Parameter names must be provided after `:` or `*`, for example `/*path`. They can be valid JavaScript identifiers (e.g. `:myName`) or JSON strings (`:"my-name"`).
+
+### Unexpected `?` or `+`
+
+In past releases, `?`, `*`, and `+` were used to denote optional or repeating parameters. As an alternative, try these:
+
+- For optional (`?`), use braces: `/file{.:ext}`.
+- For one or more (`+`), use a wildcard: `/*path`.
+- For zero or more (`*`), use both: `/files{/*path}`.
+
+### Unexpected `(`, `)`, `[`, `]`, etc.
+
+Previous versions of Path-to-RegExp used these for RegExp features. This version no longer supports them so they've been reserved to avoid ambiguity. To match these characters literally, escape them with a backslash, e.g. `"\\("`.
+
+### Unterminated quote
+
+Parameter names can be wrapped in double quote characters, and this error means you forgot to close the quote character. For example, `:"foo`.
+
+### Express <= 4.x
+
+Path-To-RegExp breaks compatibility with Express <= `4.x` in the following ways:
+
+- The wildcard `*` must have a name and matches the behavior of parameters `:`.
+- The optional character `?` is no longer supported, use braces instead: `/:file{.:ext}`.
+- Regexp characters are not supported.
+- Some characters have been reserved to avoid confusion during upgrade (`()[]?+!`).
+- Parameter names now support valid JavaScript identifiers, or quoted like `:"this"`.
 
 ## License
 
-combined-stream is licensed under the MIT license.
+MIT
+
+[npm-image]: https://img.shields.io/npm/v/path-to-regexp
+[npm-url]: https://npmjs.org/package/path-to-regexp
+[downloads-image]: https://img.shields.io/npm/dm/path-to-regexp
+[downloads-url]: https://npmjs.org/package/path-to-regexp
+[build-image]: https://img.shields.io/github/actions/workflow/status/pillarjs/path-to-regexp/ci.yml?branch=master
+[build-url]: https://github.com/pillarjs/path-to-regexp/actions/workflows/ci.yml?query=branch%3Amaster
+[coverage-image]: https://img.shields.io/codecov/c/gh/pillarjs/path-to-regexp
+[coverage-url]: https://codecov.io/gh/pillarjs/path-to-regexp
+[license-image]: http://img.shields.io/npm/l/path-to-regexp.svg?style=flat
+[license-url]: LICENSE.md
