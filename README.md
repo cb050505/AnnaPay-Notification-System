@@ -1,80 +1,53 @@
-# AnnaPay
-Solution Approach: Our solution was to create a centralized notification system within the payroll module. This system sends automated reminders and alerts to all stakeholders, including employees, managers, and HR/employers, based on payroll events.
-     How the System Works 
-   We created two types of notifications:  
-   1) Scheduled Notifications  
-     (Example: Timesheet deadline reminder)  
-   2)Event-Based Notifications  
-     (Example: Salary credited, payroll approved, payroll failure)
+# call-bound <sup>[![Version Badge][npm-version-svg]][package-url]</sup>
 
-Notifications
-Employee Notifications:
-  1)Timesheet deadline approaching
-  2)Final reminder on deadline day
-  3)Payslip generated
-  4)Salary credited
-  5)Missing bank details
-Example:
-            1)If timesheet not submitted AND deadline is tomorrow then Send SMS
-2)If salary processed then Notify employee
-        Manager Notifications:
-        1)Team members have pending timesheets
-        2)Payroll ready for approval
-        3)Payroll approval pending
-      Example:
-1)If payroll requires approval then Notify manager
-      Employer Notifications:
-       1)Payroll processing started.
-       2)Payroll processing completed 
-       3)Payroll failure or error
-       4)Bank transfer file generated
-    Example 
-1)	If payroll is completed, notify HR. 
-    Technical Design: Notification Flow After CSV Upload
-    Step 1: HR Uploads Salary CSV File
-    1)HR uploads the salary details file.
-    2)System validates the file format and required fields.
-    If Upload is Successful:
-    1)Payroll status → **Processing**
-     2)HR receives notification:
-    * Then Salary file uploaded successfully. Payroll processing has started.”
-    *This indicates that the system has accepted the file.
-  Step 2: Payroll Processing Begins
-* System begins salary calculations.
-* Data validation occurs in the background.
- During Processing:
-If Validation Error Found:
-1) Payroll status → **Validation Failed**
-2)HR receives notification:
-Then Payroll file validation failed. Please review and re-upload.”
-If Employee Bank Details Missing:
-1)That particular employee receives notification stating that
-Your bank details are missing. Please update to avoid salary delay.
-2)This prevents HR from manually checking and avoids delays.
-Step 3: Payroll Completed Successfully
-1)Payroll status them Completed
-   *Notifications Sent:
-   *Employees receive:
-    *Your salary for [Month] has been credited
-  HR receives:
-  Payroll processing completed successfully
+[![github actions][actions-image]][actions-url]
+[![coverage][codecov-image]][codecov-url]
+[![dependency status][deps-svg]][deps-url]
+[![dev dependency status][dev-deps-svg]][dev-deps-url]
+[![License][license-image]][license-url]
+[![Downloads][downloads-image]][downloads-url]
 
-Step 4: Payroll Failure 
-Payroll status → Failed
-Notification Sent:
-HR receives critical alert:
-Payroll processing failed. Immediate action required
-*This allows quick corrective action.
-and takes the necessary needed action
+[![npm badge][npm-badge-png]][package-url]
 
-Future Scope :
-1)Using Ai can help to spot salary mistakes, warn about wrong cuts, guess problems before they happen, and give tips to save tax.
-2)Different people get different alerts: HR, bosses, workers, or whole teams.
-3)It will remind about tax laws, PF payments, audits, and year-end work to stay legal
+Robust call-bound JavaScript intrinsics, using `call-bind` and `get-intrinsic`.
 
+## Getting started
 
+```sh
+npm install --save call-bound
+```
 
+## Usage/Examples
 
+```js
+const assert = require('assert');
+const callBound = require('call-bound');
 
+const slice = callBound('Array.prototype.slice');
 
+delete Function.prototype.call;
+delete Function.prototype.bind;
+delete Array.prototype.slice;
 
+assert.deepEqual(slice([1, 2, 3, 4], 1, -1), [2, 3]);
+```
+
+## Tests
+
+Clone the repo, `npm install`, and run `npm test`
+
+[package-url]: https://npmjs.org/package/call-bound
+[npm-version-svg]: https://versionbadg.es/ljharb/call-bound.svg
+[deps-svg]: https://david-dm.org/ljharb/call-bound.svg
+[deps-url]: https://david-dm.org/ljharb/call-bound
+[dev-deps-svg]: https://david-dm.org/ljharb/call-bound/dev-status.svg
+[dev-deps-url]: https://david-dm.org/ljharb/call-bound#info=devDependencies
+[npm-badge-png]: https://nodei.co/npm/call-bound.png?downloads=true&stars=true
+[license-image]: https://img.shields.io/npm/l/call-bound.svg
+[license-url]: LICENSE
+[downloads-image]: https://img.shields.io/npm/dm/call-bound.svg
+[downloads-url]: https://npm-stat.com/charts.html?package=call-bound
+[codecov-image]: https://codecov.io/gh/ljharb/call-bound/branch/main/graphs/badge.svg
+[codecov-url]: https://app.codecov.io/gh/ljharb/call-bound/
+[actions-image]: https://img.shields.io/endpoint?url=https://github-actions-badge-u3jn4tfpocch.runkit.sh/ljharb/call-bound
+[actions-url]: https://github.com/ljharb/call-bound/actions
