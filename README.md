@@ -6,6 +6,7 @@ Solution Approach: Our solution was to create a centralized notification system 
      (Example: Timesheet deadline reminder)  
    2)Event-Based Notifications  
      (Example: Salary credited, payroll approved, payroll failure)
+
 Notifications
 Employee Notifications:
   1)Timesheet deadline approaching
@@ -65,6 +66,12 @@ HR receives critical alert:
 Payroll processing failed. Immediate action required
 *This allows quick corrective action.
 and takes the necessary needed action
+
+Future Scope :
+1)Using Ai can help to spot salary mistakes, warn about wrong cuts, guess problems before they happen, and give tips to save tax.
+2)Different people get different alerts: HR, bosses, workers, or whole teams.
+3)It will remind about tax laws, PF payments, audits, and year-end work to stay legal
+
 
 
 
